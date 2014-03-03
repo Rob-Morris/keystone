@@ -2,6 +2,7 @@ var keystone = require('../../'),
 	_ = require('underscore'),
 	moment = require('moment'),
 	querystring = require('querystring'),
+	async = require('async'),
 	utils = require('keystone-utils');
 
 exports = module.exports = function(req, res) {
@@ -87,21 +88,47 @@ exports = module.exports = function(req, res) {
 				return res.redirect('/keystone/' + req.list.path + '/' + items.results[0].id);
 			}
 			
-			keystone.render(req, res, 'list', _.extend(viewLocals, {
-				section: keystone.nav.by.list[req.list.key] || {},
-				title: 'Keystone: ' + req.list.plural,
-				link_to: link_to,
-				list: req.list,
-				sort: sort,
-				filters: filters,
-				search: req.query.search,
-				columns: columns,
-				colPaths: _.pluck(columns, 'path'),
-				items: items,
-				submitted: req.body || {},
-				query: req.query
-			}));
+			var download_link = '/keystone/download/' + req.list.path,
+				downloadParams = {};
 			
+			if (req.query.q) {
+				downloadParams.q = req.query.q;
+			}
+			if (req.query.search) {
+				downloadParams.search = req.query.search;
+			}
+			if (req.query.cols) {
+				downloadParams.cols = req.query.cols;
+			}
+			
+			downloadParams = querystring.stringify(downloadParams);
+			
+			if (downloadParams) {
+				download_link += '?' + downloadParams;
+			}
+			
+			var compileFields = function(item, callback) { item.compile('initial', callback); }
+			
+			async.eachSeries(req.list.initialFields, compileFields , function() {
+				
+				keystone.render(req, res, 'list', _.extend(viewLocals, {
+					section: keystone.nav.by.list[req.list.key] || {},
+					title: 'Keystone: ' + req.list.plural,
+					page: 'list',
+					link_to: link_to,
+					download_link: download_link,
+					list: req.list,
+					sort: sort,
+					filters: filters,
+					search: req.query.search,
+					columns: columns,
+					colPaths: _.pluck(columns, 'path'),
+					items: items,
+					submitted: req.body || {},
+					query: req.query
+				}));
+				
+			});
 		});
 		
 	}
@@ -112,7 +139,6 @@ exports = module.exports = function(req, res) {
 			if (req.query.update) {
 				try {
 					data = JSON.parse(req.query.update);
-					console.log(data);
 				} catch(e) {
 					req.flash('error', 'There was an error parsing the update data.');
 					return renderView();
@@ -144,7 +170,24 @@ exports = module.exports = function(req, res) {
 		return;
 	}
 	
-	if (!req.list.get('nocreate') && req.method == 'POST' && req.body.action == 'create') {
+	if (!req.list.get('nocreate') && _.has(req.query, 'new')) {
+		
+		var item = new req.list.model();
+		item.save(function(err) {
+			
+			if (err) {
+				console.log('There was an error creating the new ' + req.list.singular + ':');
+				console.log(err);
+				req.flash('error', 'There was an error creating the new ' + req.list.singular + '.');
+				renderView();
+			} else {
+				req.flash('success', 'New ' + req.list.singular + ' ' + req.list.getDocumentName(item) + ' created.');
+				return res.redirect('/keystone/' + req.list.path + '/' + item.id);
+			}
+			
+		});
+		
+	} else if (!req.list.get('nocreate') && req.method == 'POST' && req.body.action == 'create') {
 		
 		var item = new req.list.model(),
 			updateHandler = item.getUpdateHandler(req);

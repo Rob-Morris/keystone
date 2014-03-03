@@ -27,7 +27,7 @@ exports = module.exports = function(req, res) {
 				if (i.isValid) {
 					return _.clone(i);
 				} else {
-				    keystone.console.err('configuration error', 'Relationship: ' + i.path + ' on list: ' + req.list.key + ' links to an invalid list: ' + i.ref);
+				    keystone.console.err('Relationship Configuration Error', 'Relationship: ' + i.path + ' on list: ' + req.list.key + ' links to an invalid list: ' + i.ref);
 					return null;
 				}
 			})));
@@ -127,12 +127,17 @@ exports = module.exports = function(req, res) {
 					
 				}, cb);
 			}
-			
+			var	loadFormFieldTemplates = function(cb){
+				var onlyFields = function(item) { return item.type == 'field'; }
+				var compile = function(item, callback) { item.field.compile('form',callback); }
+				async.eachSeries(req.list.uiElements.filter(onlyFields), compile , cb);
+			}
 			/** Render View */
 			
 			async.parallel([
 				loadDrilldown,
-				loadRelationships
+				loadRelationships,
+				loadFormFieldTemplates
 			], function(err) {
 				
 				var showRelationships = _.some(relationships, function(rel) {
@@ -142,6 +147,7 @@ exports = module.exports = function(req, res) {
 				keystone.render(req, res, 'item', _.extend(viewLocals, {
 					section: keystone.nav.by.list[req.list.key] || {},
 					title: 'Keystone: ' + req.list.singular + ': ' + req.list.getDocumentName(item),
+					page: 'item',
 					list: req.list,
 					item: item,
 					relationships: relationships,
